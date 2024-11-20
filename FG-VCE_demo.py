@@ -16,12 +16,6 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def apply_blur(image, radius=5):
-    """
-    使用Pillow库对图像进行模糊处理。
-    :param image: 输入的PIL图像
-    :param radius: 模糊半径，默认值为5
-    :return: 模糊后的PIL图像
-    """
     return image.filter(ImageFilter.GaussianBlur(radius))
 
 transform = transforms.Compose([
@@ -146,7 +140,7 @@ def feature_replacement_attack(all_feature_units, attack_feature_map, img_tensor
 
 
 def extract_all_feature_units_from_category(model, img_dir):
-    global all_feature_units  # 确保 all_feature_units 是全局变量
+    global all_feature_units
     all_feature_units = []
 
     for img_name in os.listdir(img_dir):
@@ -155,24 +149,16 @@ def extract_all_feature_units_from_category(model, img_dir):
         if os.path.isfile(img_path):
             img = Image.open(img_path).convert('RGB')
             img_tensor = transform(img).unsqueeze(0).to(device)
-
-            # 执行前向传播，触发钩子函数
             _ = model(img_tensor)
 
             if features_before is not None and len(features_before.shape) == 4:
-                # 确保 features_before 是 4 维张量 (batch_size, channels, height, width)
-                # 获取特征图的宽和高
                 height, width = features_before.size(2), features_before.size(3)
-
-                # 提取所有特征单元，保留在 GPU 上
                 for i in range(height):
                     for j in range(width):
                         feature_unit = features_before[:, :, i, j].view(1, -1)  # 保持在 GPU 上
                         all_feature_units.append(feature_unit)
             else:
                 print("Error: Unexpected shape for features_before")
-
-    # 将所有特征单元拼接为一个张量，保持在 GPU 上
     if all_feature_units:
         all_feature_units = torch.cat(all_feature_units, dim=0)
 def show_cam_on_image(img, mask, title):
@@ -187,11 +173,8 @@ def compute_shapley_values(features, model, img_tensor, target_class, sigma=0.8)
     device = features.device
     _, c, h, w = features.size()
     shapley_matrix = torch.zeros(h, w).to(device)
-
-
     output = model(img_tensor)
     true_class_prob_before = F.softmax(output, dim=1)[0, target_class].item()
-
     X = torch.arange(0, w, device=device).view(1, -1).repeat(h, 1)
     Y = torch.arange(0, h, device=device).view(-1, 1).repeat(1, w)
     G = torch.zeros(h, w, h, w).to(device)  # Shape: (h, w, h, w)
@@ -228,10 +211,8 @@ def predict_and_visualize_combined(model, category_dir, cam_extractor):
         img_path = os.path.join(category_dir, img_name)
         img = Image.open(img_path).convert('RGB')
         img_tensor = transform(img).unsqueeze(0).to(device)
-
         output = model(img_tensor)
         predicted_class = output.argmax(dim=1).item()
-
         if predicted_class != true_class and not incorrect_images:
             incorrect_images.append((img, img_tensor, predicted_class))
         elif predicted_class == true_class and not correct_images:
@@ -242,11 +223,10 @@ def predict_and_visualize_combined(model, category_dir, cam_extractor):
     def normalize_attacked_feature_map(feature_map):
         min_val = feature_map.min()
         max_val = feature_map.max()
-
-        if max_val - min_val > 1e-6:  # 防止极小差值
+        if max_val - min_val > 1e-6:
             normalized_feature_map = (feature_map - min_val) / (max_val - min_val)
         else:
-            normalized_feature_map = feature_map.clone()  # 如果 max_val == min_val，则不做任何操作
+            normalized_feature_map = feature_map.clone()
 
         return normalized_feature_map
     def visualize_samples_with_metrics(image_data, title_prefix, is_incorrect=True):
