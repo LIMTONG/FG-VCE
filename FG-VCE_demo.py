@@ -71,7 +71,7 @@ def extract_all_feature_units_from_category(model, img_dir):
         all_feature_units = torch.cat(all_feature_units, dim=0)
 
 
-#------------------------------------Comepared pgd based method and Ours Visualization results-----------------------------
+#------------------------------------Compared pgd based method and Ours Visualization results-----------------------------
 #pgd attack process
 def pgd_attack(model, images, labels, eps=0.1, alpha=0.05, iters=100):
     images = images.clone().detach().to(device)
