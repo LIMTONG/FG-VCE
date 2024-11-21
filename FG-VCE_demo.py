@@ -63,7 +63,7 @@ def extract_all_feature_units_from_category(model, img_dir):
                 height, width = features_before.size(2), features_before.size(3)
                 for i in range(height):
                     for j in range(width):
-                        feature_unit = features_before[:, :, i, j].view(1, -1)  # 保持在 GPU 上
+                        feature_unit = features_before[:, :, i, j].view(1, -1)
                         all_feature_units.append(feature_unit)
             else:
                 print("Error: Unexpected shape for features_before")
