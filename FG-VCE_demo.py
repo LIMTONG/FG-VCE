@@ -320,10 +320,10 @@ def predict_and_visualize_combined(model, category_dir, cam_extractor):
 
                 # Visualization results of dominant regions
                 show_cam_on_image(img, difference_map_normalized_fr.cpu(),
-                                  f"{title_prefix} (Difference shapMap After Feature Replacement Attack)")
+                                  f"{title_prefix} (Difference shapMap After Feature Replacement dr)")
                 # Visualization results of invariant regions.
                 show_cam_on_image(img, difference_map_normalized_frir.cpu(),
-                                  f"{title_prefix} (Difference shapMap After Feature Replacement qh)")
+                                  f"{title_prefix} (Difference shapMap After Feature Replacement ie)")
             else:
                 print(f"No {'incorrect' if is_incorrect else 'correct'} predictions found for visualization.")
 
