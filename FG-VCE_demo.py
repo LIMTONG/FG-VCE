@@ -91,7 +91,8 @@ def pgd_attack(model, images, labels, eps=0.1, alpha=0.05, iters=100):
             break
     return images
 
-def feature_replacement_attack(all_feature_units, attack_feature_map, img_tensor, true_class, model, max_iterations=100):
+
+def feature_replacement(all_feature_units, attack_feature_map, img_tensor, true_class, model, max_iterations=100):
     """
     Perform a feature replacement process on a given feature map using Shapley values and cosine similarity.
     Select the top 20 units that maximize both Shapley value and cosine similarity.
@@ -116,55 +117,56 @@ def feature_replacement_attack(all_feature_units, attack_feature_map, img_tensor
     shapley_values = compute_shapley_values(attack_feature_map, model, img_tensor, true_class)
 
     while iteration_count < max_iterations:
-        # Select feature points based on Shapley values
-        top_shapley_indices = torch.topk(shapley_values.view(-1), 20, largest=True).indices
-        top_shapley_coords = [(idx // cols, idx % cols) for idx in top_shapley_indices]
+        max_combined_score = -float('inf')
+        best_coords = None
+        best_replacement_unit = None
 
-        for row, col in top_shapley_coords:
-            max_prob_increase = -float('inf')
-            best_replacement_unit = None
-            current_unit = attack_feature_map[:, :, row, col].view(1, -1)
+        # Iterate over all feature points to find the best combination of Shapley value and cosine similarity
+        for row in range(rows):
+            for col in range(cols):
+                current_unit = attack_feature_map[:, :, row, col].view(1, -1)
 
-            # Calculate cosine similarities with all feature units
-            candidate_units = all_feature_units
-            similarities = F.cosine_similarity(current_unit, candidate_units)
-            top_20_candidates = torch.topk(similarities, 20, largest=True).indices
+                # Calculate cosine similarities with all feature units
+                candidate_units = all_feature_units
+                similarities = F.cosine_similarity(current_unit, candidate_units)
 
-            # Iterate over top 20 candidates to find the best replacement unit
-            for idx in top_20_candidates:
-                candidate_unit = candidate_units[idx].view(1, 2048)
-                temp_feature_map = attack_feature_map.clone().detach()
-                temp_feature_map[:, :, row, col] = candidate_unit
-                output = model.fc(temp_feature_map.mean(dim=(2, 3)))
-                true_class_prob = F.softmax(output, dim=1)[0, true_class].item()
+                # Combine Shapley values and cosine similarities
+                shapley_value = shapley_values[:, :, row, col].item()
+                combined_score = shapley_value * similarities.max().item()  # Example: Multiply Shapley value and max similarity
 
-                if true_class_prob > max_prob_increase:
-                    max_prob_increase = true_class_prob
-                    best_replacement_unit = candidate_unit
+                if combined_score > max_combined_score:
+                    max_combined_score = combined_score
+                    best_coords = (row, col)
+                    top_candidate_idx = torch.argmax(similarities).item()
+                    best_replacement_unit = candidate_units[top_candidate_idx].view(1, 2048)
 
-            # Update the feature map with the best replacement unit
-            if best_replacement_unit is not None:
-                best_attack_feature_map[:, :, row, col] = best_replacement_unit
-                attack_feature_map = best_attack_feature_map.clone().detach()
+        # Update the feature map with the best replacement unit
+        if best_coords is not None and best_replacement_unit is not None:
+            row, col = best_coords
+            best_attack_feature_map[:, :, row, col] = best_replacement_unit
+            attack_feature_map = best_attack_feature_map.clone().detach()
 
-            # Check for NaN or Inf values and clamp if necessary
-            if torch.isnan(attack_feature_map).any() or torch.isinf(attack_feature_map).any():
-                print(f"NaN or Inf detected in attack_feature_map at step ({row}, {col})!")
-                attack_feature_map = torch.clamp(attack_feature_map, min=-1e6, max=1e6)
+        # Check for NaN or Inf values and clamp if necessary
+        if torch.isnan(attack_feature_map).any() or torch.isinf(attack_feature_map).any():
+            print(f"NaN or Inf detected in attack_feature_map at step ({row}, {col})!")
+            attack_feature_map = torch.clamp(attack_feature_map, min=-1e6, max=1e6)
 
-            # Calculate current prediction probability
-            output = model.fc(attack_feature_map.mean(dim=(2, 3)))
-            predicted_class = output.argmax(dim=1).item()
-            true_class_prob = F.softmax(output, dim=1)[0, true_class].item()
-            print(f"Step ({row}, {col}): True Class Probability = {true_class_prob:.4f}")
+        # Calculate current prediction probability
+        output = model.fc(attack_feature_map.mean(dim=(2, 3)))
+        predicted_class = output.argmax(dim=1).item()
+        true_class_prob = F.softmax(output, dim=1)[0, true_class].item()
+        print(f"Step ({row}, {col}): True Class Probability = {true_class_prob:.4f}")
 
-            # Check if the attack is successful
-            if predicted_class == true_class:
-                print(f"Attack Successful! Correct Class {true_class} achieved.")
-                return attack_feature_map
+        # Check if the attack is successful
+        if predicted_class == true_class:
+            print(f"Attack Successful! Correct Class {true_class} achieved.")
+            return attack_feature_map
+
         iteration_count += 1
+
     print(f"Reached maximum iterations ({max_iterations}) without successful attack.")
     return attack_feature_map
+
 
 def compute_shapley_values(features, model, img_tensor, target_class, sigma=0.8):
     """
@@ -288,7 +290,7 @@ def predict_and_visualize_combined(model, category_dir, cam_extractor):
 
                 # ------------------------ 3. Feature unit replacement(Ours) ------------------------
 
-                attacked_feature_map_fr = feature_replacement_attack(all_feature_units, saved_feature_map, img_tensor,
+                attacked_feature_map_fr = feature_replacement(all_feature_units, saved_feature_map, img_tensor,
                                                                      true_class)
 
                 # GradCAM for Feature unit replacement process
